@@ -49,7 +49,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           Text(error, textAlign: TextAlign.center),
           const SizedBox(height: 24),
           FilledButton.icon(
-            onPressed: () => ref.read(dashboardProvider.notifier).loadData(),
+            onPressed: () => ref.read(dashboardProvider.notifier).refreshData(),
             icon: const Icon(Icons.refresh),
             label: const Text('Coba Lagi'),
           ),

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Keep for selected month preference
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../config/app_config.dart';
@@ -22,155 +22,72 @@ class ApiResponse<T> {
   });
 }
 
-/// Attendance API Service
+/// Attendance Service (Firestore Version)
 /// 
-/// Handles all HTTP communication with the Google Apps Script backend.
+/// Listens to real-time updates from Firestore 'employees' collection.
+/// Data structure in Firestore:
+/// Collection: employees
+/// Document ID: {Sheet Name}
+/// Fields: 
+///   - json_data: String (JSON String of the employee object)
+///   - last_updated: String (ISO Date)
 
 class AttendanceService {
   static final AttendanceService _instance = AttendanceService._internal();
   factory AttendanceService() => _instance;
   AttendanceService._internal();
 
-  final http.Client _client = http.Client();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final Connectivity _connectivity = Connectivity();
 
   // ============================================
-  // API METHODS
+  // API METHODS (Refactored to Stream)
   // ============================================
 
-  /// Fetch all employees with optional month filter
-  Future<ApiResponse<EmployeesResponse>> getEmployees({String? month}) async {
-    try {
-      // Check connectivity
-      final connectivityResult = await _connectivity.checkConnectivity();
-      final isOffline = connectivityResult == ConnectivityResult.none;
+  /// Get real-time stream of all employees
+  Stream<List<Employee>> getEmployeesStream() {
+    return _firestore.collection('employees').snapshots().map((snapshot) {
+      if (snapshot.docs.isEmpty) return [];
 
-      if (isOffline) {
-        return await _getCachedEmployees();
-      }
-
-      // Build URL with optional month filter
-      String url = AppConfig.apiBaseUrl;
-      if (month != null && month.isNotEmpty) {
-        url += '?month=$month';
-      }
-      
-      print('Fetching from: $url'); // Debug log
-      
-      final uri = Uri.parse(url);
-      
-      // Make request
-      final response = await _client
-          .get(uri)
-          .timeout(Duration(seconds: AppConfig.requestTimeoutSeconds));
-
-      if (response.statusCode == 200) {
-        final json = jsonDecode(response.body) as Map<String, dynamic>;
-        
-        if (json['success'] == true) {
-          final employeesResponse = EmployeesResponse.fromJson(json);
+      return snapshot.docs.map((doc) {
+        try {
+          final data = doc.data();
+          // Backend Apps Script menyimpan data sebagai JSON string di field 'json_data'
+          // atau sebagai object langsung (kita handle keduanya untuk jaga-jaga)
           
-          // Cache the response
-          await _cacheEmployees(response.body, month);
-          
-          return ApiResponse(success: true, data: employeesResponse);
-        } else {
-          return ApiResponse(
-            success: false,
-            error: json['error']?.toString() ?? 'Unknown error',
+          if (data.containsKey('json_data')) {
+            // New format (JSON String)
+            final jsonStr = data['json_data'] as String;
+            final jsonMap = jsonDecode(jsonStr);
+            return Employee.fromJson(jsonMap);
+          } else {
+            // Direct object format (fallback)
+            return Employee.fromJson(data);
+          }
+        } catch (e) {
+          print('Error parsing employee ${doc.id}: $e');
+          // Return dummy/empty or throw? Better to skip invalid docs
+          return Employee(
+            sheet: doc.id, 
+            nama: 'Error Parsing', 
+            periode: '', 
+            totalData: 0, 
+            data: []
           );
         }
-      } else {
-        // Try cached data on server error
-        final cached = await _getCachedEmployees();
-        if (cached.success) {
-          return cached;
-        }
-        
-        return ApiResponse(
-          success: false,
-          error: 'Server error: ${response.statusCode}',
-        );
-      }
-    } on TimeoutException {
-      return await _getCachedEmployees(errorMessage: 'Request timeout');
-    } catch (e) {
-      final cached = await _getCachedEmployees(errorMessage: e.toString());
-      if (cached.success) {
-        return cached;
-      }
-      
-      return ApiResponse(
-        success: false,
-        error: 'Connection error: $e',
-      );
-    }
+      }).where((e) => e.nama != 'Error Parsing').toList();
+    });
   }
 
+  /// Check network connectivity
+  Future<bool> isOnline() async {
+    final result = await _connectivity.checkConnectivity();
+    return result != ConnectivityResult.none;
+  }
+  
   // ============================================
-  // CACHING METHODS
+  // PREFERENCE METHODS (Keep existing logic)
   // ============================================
-
-  Future<void> _cacheEmployees(String responseBody, String? month) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cacheKey = month != null 
-          ? '${AppConfig.cacheKeyEmployees}_$month'
-          : AppConfig.cacheKeyEmployees;
-      await prefs.setString(cacheKey, responseBody);
-      await prefs.setString(
-        AppConfig.cacheKeyLastUpdate,
-        DateTime.now().toIso8601String(),
-      );
-    } catch (e) {
-      print('Cache save error: $e');
-    }
-  }
-
-  Future<ApiResponse<EmployeesResponse>> _getCachedEmployees({
-    String? errorMessage,
-    String? month,
-  }) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cacheKey = month != null 
-          ? '${AppConfig.cacheKeyEmployees}_$month'
-          : AppConfig.cacheKeyEmployees;
-      final cached = prefs.getString(cacheKey);
-      
-      if (cached != null) {
-        final json = jsonDecode(cached) as Map<String, dynamic>;
-        final employeesResponse = EmployeesResponse.fromJson(json);
-        
-        return ApiResponse(
-          success: true,
-          data: employeesResponse,
-          isFromCache: true,
-        );
-      }
-    } catch (e) {
-      print('Cache read error: $e');
-    }
-    
-    return ApiResponse(
-      success: false,
-      error: errorMessage ?? 'No cached data available',
-    );
-  }
-
-  /// Get last update time
-  Future<DateTime?> getLastUpdateTime() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final timeStr = prefs.getString(AppConfig.cacheKeyLastUpdate);
-      if (timeStr != null) {
-        return DateTime.parse(timeStr);
-      }
-    } catch (e) {
-      print('Get last update error: $e');
-    }
-    return null;
-  }
 
   /// Save selected month preference
   Future<void> saveSelectedMonth(String month) async {
@@ -191,31 +108,5 @@ class AttendanceService {
       print('Get month error: $e');
     }
     return null;
-  }
-
-  /// Clear all cached data
-  Future<void> clearCache() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final keys = prefs.getKeys();
-      for (final key in keys) {
-        if (key.startsWith(AppConfig.cacheKeyEmployees)) {
-          await prefs.remove(key);
-        }
-      }
-      await prefs.remove(AppConfig.cacheKeyLastUpdate);
-    } catch (e) {
-      print('Clear cache error: $e');
-    }
-  }
-
-  /// Check network connectivity
-  Future<bool> isOnline() async {
-    final result = await _connectivity.checkConnectivity();
-    return result != ConnectivityResult.none;
-  }
-
-  void dispose() {
-    _client.close();
   }
 }

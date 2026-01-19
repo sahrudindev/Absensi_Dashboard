@@ -1,25 +1,59 @@
 # Attendance Dashboard
 Real-time employee attendance dashboard with Google Sheets backend.
 
-## Setup
+## Architecture
+- **Backend:** Google Sheets (Source of Truth) -> Google Apps Script (Sync Engine) -> Firebase Firestore (Database)
+- **Frontend:** Flutter Web (Reads from Firestore)
 
+## Setup Guide
+
+### 1. Google Apps Script (Backend)
+The `backend/Code.gs` file contains the logic to sync Google Sheets data to Firestore. 
+
+**Setup Steps:**
+1. Open your Google Sheet -> **Extensions** -> **Apps Script**.
+2. Copy the content of `backend/Code.gs` from your local machine (this folder is ignored in git).
+3. The keys are already configured in your local `backend/Code.gs`.
+4. **Initial Run:**
+   - Run `setupTrigger` to schedule the daily sync (19:00).
+   - Run `syncToFirestore` to test the connection.
+
+**Feature: Data Merging**
+- This script supports **merging data** from multiple Google Sheet files.
+- Use this if you create a new spreadsheet for a new year (e.g., 2026) to keep the file light.
+- **How to use:** Simply install this same script (with the same Firebase Keys) on the NEW spreadsheet. When both scripts run, they will combine their data in Firestore automatically.
+
+### 2. Firebase Security Rules
+1. Go to Firebase Console -> Firestore Database -> **Rules**.
+2. Change the rules to allow read access:
+   ```javascript
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /{document=**} {
+         allow read, write: if true;
+       }
+     }
+   }
+   ```
+3. Click **Publish**.
+
+### 3. Flutter App (Frontend)
 1. **Clone the repository**
-2. **Create .env file**
-   Copy `.env.example` to `.env` and configure your API URL:
+2. **Setup Environment**
    ```bash
    cp .env.example .env
+   # No need to edit .env for Firestore version, but file must exist.
    ```
-   Edit `.env` and set `API_BASE_URL` to your Google Apps Script Web App URL.
-
-3. **Install dependencies**
+3. **Install Dependencies & Run**
    ```bash
    flutter pub get
+   flutter run -d web-server --web-hostname 0.0.0.0 --web-port 5000
    ```
 
-4. **Run the app**
-   ```bash
-   flutter run -d chrome
-   ```
+### Troubleshooting
+- **Data Empty?** Check Apps Script executions. Ensure `syncToFirestore` ran successfully.
+- **Permission Error?** Check Firebase Security Rules.
 
 
 Real-Time Attendance Dashboard built with Flutter and Google Apps Script backend.

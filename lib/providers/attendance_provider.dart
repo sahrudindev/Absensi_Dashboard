@@ -168,7 +168,8 @@ class DashboardState {
 
 class DashboardNotifier extends StateNotifier<DashboardState> {
   final AttendanceService _service;
-  Timer? _refreshTimer;
+  StreamSubscription? _subscription;
+  Timer? _refreshTimer; // Keep timer logic but might not need it for streams
 
   DashboardNotifier(this._service) : super(DashboardState.initial()) {
     _initializeData();
@@ -180,27 +181,23 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     if (savedMonth != null) {
       state = state.copyWith(selectedMonth: savedMonth);
     }
-    await loadData();
-    _startAutoRefresh();
+    
+    // Subscribe to Firestore Stream
+    _subscribeToStream();
   }
 
-  /// Load all employees data (always load all, filter locally)
-  Future<void> loadData() async {
+  /// Subscribe to real-time updates
+  void _subscribeToStream() {
     state = state.copyWith(isLoading: true, error: null);
 
-    try {
-      // Always load ALL data (no month filter) - filter locally for speed
-      final response = await _service.getEmployees();
-
-      if (response.success && response.data != null) {
-        final employees = response.data!.employees;
-        
+    _subscription = _service.getEmployeesStream().listen(
+      (employees) {
         // Set defaults if not already set
         String? defaultEmployee = state.selectedEmployee;
         String? defaultMonth = state.selectedMonth;
         
         // Default to first employee if none selected
-        if (defaultEmployee == null && employees.isNotEmpty) {
+        if ((defaultEmployee == null || employees.indexWhere((e) => e.sheet == defaultEmployee) == -1) && employees.isNotEmpty) {
           defaultEmployee = employees.first.sheet;
         }
         
@@ -216,7 +213,7 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
           }
           if (months.isNotEmpty) {
             final sortedMonths = months.toList()..sort((a, b) => b.compareTo(a));
-            defaultMonth = sortedMonths.first; // Most recent month
+            defaultMonth = sortedMonths.first;
           }
         }
         
@@ -225,53 +222,24 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
           selectedEmployee: defaultEmployee,
           selectedMonth: defaultMonth,
           isLoading: false,
-          isFromCache: response.isFromCache,
           lastUpdate: DateTime.now(),
           error: null,
         );
-      } else {
+      },
+      onError: (error) {
         state = state.copyWith(
           isLoading: false,
-          error: response.error ?? 'Failed to load data',
+          error: 'Stream Error: $error',
         );
-      }
-    } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: 'Error: $e',
-      );
-    }
+      },
+    );
   }
 
-  /// Refresh data (pull-to-refresh)
+  /// Manual Refresh (Not strictly needed for Stream, but good for UX)
   Future<void> refreshData() async {
-    if (state.isRefreshing) return;
-
-    state = state.copyWith(isRefreshing: true, error: null);
-
-    try {
-      final response = await _service.getEmployees(month: state.selectedMonth);
-
-      if (response.success && response.data != null) {
-        state = state.copyWith(
-          employees: response.data!.employees,
-          isRefreshing: false,
-          isFromCache: response.isFromCache,
-          lastUpdate: DateTime.now(),
-          error: null,
-        );
-      } else {
-        state = state.copyWith(
-          isRefreshing: false,
-          error: response.error,
-        );
-      }
-    } catch (e) {
-      state = state.copyWith(
-        isRefreshing: false,
-        error: 'Refresh error: $e',
-      );
-    }
+    // For streams, "refresh" might just mean ensuring connection or re-subscribing
+    // But since Firestore handles reconnection, this is mostly a placeholder now.
+    // We can leave it empty or force a UI loading state if desired.
   }
 
   /// Update search query
@@ -285,7 +253,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     if (month != null) {
       await _service.saveSelectedMonth(month);
     }
-    // No reload needed - filteredEmployees getter will handle filtering
   }
 
   /// Update selected employee (no reload needed - filter locally)
@@ -297,22 +264,12 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     }
   }
 
-  /// Start auto-refresh timer
-  void _startAutoRefresh() {
-    _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(
-      Duration(minutes: AppConfig.autoRefreshMinutes),
-      (_) => refreshData(),
-    );
-  }
-
   void stopAutoRefresh() {
-    _refreshTimer?.cancel();
-    _refreshTimer = null;
+    _subscription?.pause();
   }
 
   void resumeAutoRefresh() {
-    _startAutoRefresh();
+    _subscription?.resume();
   }
 
   void clearError() {
@@ -321,6 +278,7 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
 
   @override
   void dispose() {
+    _subscription?.cancel();
     _refreshTimer?.cancel();
     super.dispose();
   }
