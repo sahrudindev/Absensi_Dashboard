@@ -62,4 +62,9 @@ class AppConfig {
   static const int colorCardTerlambat = 0xFFF59E0B;
   static const int colorCardTidakHadir = 0xFFEF4444;
   static const int colorCardTotal = 0xFF3B82F6;
+  
+  /// Color aliases for widgets
+  static const int colorHadir = colorCardHadir;
+  static const int colorTerlambat = colorCardTerlambat;
+  static const int colorTidakHadir = colorCardTidakHadir;
 }
