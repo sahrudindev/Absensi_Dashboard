@@ -830,51 +830,63 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 ),
               ),
               Wrap(
-                spacing: 12,
+                spacing: 8,
                 children: [
                   _legendDot(const Color(0xFF10B981), 'Hadir', colorScheme),
                   _legendDot(const Color(0xFFF59E0B), 'Terlambat', colorScheme),
-                  _legendDot(Colors.grey.shade400, 'Libur', colorScheme),
+                  _legendDot(const Color(0xFF3B82F6), 'Balance+', colorScheme),
                 ],
               ),
             ],
           ),
           const SizedBox(height: 20),
           SizedBox(
-            height: 120,
+            height: 140,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: sortedData.map((record) {
                 final isPresent = record.isWorkingDay;
                 final isLate = record.isLate;
                 final isHoliday = record.isLeaveOrHoliday;
+                final hasPositiveBalance = record.balanceMinutes > 0;
                 
                 Color barColor;
-                double height;
+                double baseHeight;
                 
                 if (isHoliday) {
                   barColor = Colors.grey.shade400;
-                  height = 35;
+                  baseHeight = 30;
                 } else if (isLate) {
                   barColor = const Color(0xFFF59E0B);
-                  height = 70;
+                  baseHeight = 55;
                 } else if (isPresent) {
                   barColor = const Color(0xFF10B981);
-                  height = 95;
+                  baseHeight = 85;
                 } else {
                   barColor = const Color(0xFFEF4444);
-                  height = 25;
+                  baseHeight = 20;
+                }
+
+                // Calculate balance bar height (max 30px for positive balance)
+                double balanceHeight = 0;
+                if (hasPositiveBalance && isPresent) {
+                  // Scale balance: 30 minutes = 15px, max 30px
+                  balanceHeight = (record.balanceMinutes / 30 * 15).clamp(5, 30).toDouble();
                 }
 
                 final day = record.tanggal.length >= 10 
                     ? record.tanggal.substring(8, 10) 
                     : '';
 
+                final tooltipMsg = '${record.tanggal}\n'
+                    '${isPresent ? (isLate ? "Terlambat" : "Hadir") : (isHoliday ? record.keterangan : "Tidak Hadir")}'
+                    '${record.balance != null && record.balance!.isNotEmpty ? "\nBalance: ${record.balance}" : ""}';
+
                 return Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 1.5),
                     child: Tooltip(
-                      message: '${record.tanggal}\n${record.keterangan.isNotEmpty ? record.keterangan : (isPresent ? (isLate ? "Terlambat" : "Hadir") : "Tidak Hadir")}',
+                      message: tooltipMsg,
                       decoration: BoxDecoration(
                         color: colorScheme.inverseSurface,
                         borderRadius: BorderRadius.circular(8),
@@ -882,25 +894,61 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 400),
-                            curve: Curves.easeOutCubic,
-                            height: height,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  barColor.withOpacity(0.8),
-                                  barColor,
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(6),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: barColor.withOpacity(0.3),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
+                          // Stacked bar container
+                          SizedBox(
+                            height: baseHeight + balanceHeight,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                // Balance bar (blue, on top) - only if positive
+                                if (balanceHeight > 0)
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 400),
+                                    curve: Curves.easeOutCubic,
+                                    height: balanceHeight,
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [
+                                          Color(0xFF60A5FA),
+                                          Color(0xFF3B82F6),
+                                        ],
+                                      ),
+                                      borderRadius: const BorderRadius.only(
+                                        topLeft: Radius.circular(4),
+                                        topRight: Radius.circular(4),
+                                      ),
+                                    ),
+                                  ),
+                                // Main status bar
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 400),
+                                  curve: Curves.easeOutCubic,
+                                  height: baseHeight,
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        barColor.withOpacity(0.8),
+                                        barColor,
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.only(
+                                      topLeft: Radius.circular(balanceHeight > 0 ? 0 : 4),
+                                      topRight: Radius.circular(balanceHeight > 0 ? 0 : 4),
+                                      bottomLeft: const Radius.circular(4),
+                                      bottomRight: const Radius.circular(4),
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: barColor.withOpacity(0.3),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -925,6 +973,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       ),
     );
   }
+
 
   Widget _legendDot(Color color, String label, ColorScheme colorScheme) {
     return Row(
