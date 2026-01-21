@@ -7,7 +7,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'firebase_options.dart';
 
 import 'config/app_config.dart';
-import 'screens/dashboard_screen.dart';
+import 'screens/main_navigation.dart';
+import 'providers/theme_provider.dart';
 
 /// Main Application Entry Point
 /// 
@@ -37,11 +38,12 @@ Future<void> main() async {
   );
 }
 
-class AttendanceApp extends StatelessWidget {
+class AttendanceApp extends ConsumerWidget {
   const AttendanceApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
     // Premium color palette
     const primaryColor = Color(0xFF1E3A8A);      // Deep Blue
     const secondaryColor = Color(0xFF3B82F6);   // Bright Blue
@@ -140,10 +142,10 @@ class AttendanceApp extends StatelessWidget {
         ),
       ),
       
-      // Use system theme preference
-      themeMode: ThemeMode.system,
+      // Use theme from provider (persisted)
+      themeMode: themeMode,
       
-      home: const DashboardScreen(),
+      home: const MainNavigation(),
     );
   }
 }

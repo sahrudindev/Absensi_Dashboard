@@ -21,6 +21,7 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen> 
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
+  String _selectedFilter = 'all'; // 'all', 'hadir', 'terlambat', 'libur'
 
   @override
   void initState() {
@@ -234,7 +235,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               ),
             ),
 
-            // Attendance list header
+
+            // Attendance list header with filter chips
             SliverToBoxAdapter(
               child: FadeTransition(
                 opacity: CurvedAnimation(
@@ -242,28 +244,49 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   curve: const Interval(0.5, 1.0),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Riwayat Kehadiran',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: colorScheme.primaryContainer.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${selectedEmployee.data.length} hari',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: colorScheme.primary,
-                            fontWeight: FontWeight.w600,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Riwayat Kehadiran',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primaryContainer.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              '${_getFilteredData(selectedEmployee.data).length} hari',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      // Filter chips
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _buildFilterChip('all', 'Semua', Icons.list_rounded, colorScheme),
+                            const SizedBox(width: 8),
+                            _buildFilterChip('hadir', 'Hadir', Icons.check_circle_outline_rounded, colorScheme),
+                            const SizedBox(width: 8),
+                            _buildFilterChip('terlambat', 'Terlambat', Icons.access_time_rounded, colorScheme),
+                            const SizedBox(width: 8),
+                            _buildFilterChip('libur', 'Libur/Cuti', Icons.event_busy_rounded, colorScheme),
+                          ],
                         ),
                       ),
                     ],
@@ -272,13 +295,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               ),
             ),
 
-            // Daily attendance list
+            // Daily attendance list (filtered)
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final sortedData = List<AttendanceRecord>.from(selectedEmployee.data)
-                    ..sort((a, b) => b.tanggal.compareTo(a.tanggal));
-                  final record = sortedData[index];
+                  final filteredData = _getFilteredData(selectedEmployee.data);
+                  if (index >= filteredData.length) return null;
+                  final record = filteredData[index];
                   return FadeTransition(
                     opacity: CurvedAnimation(
                       parent: _animationController,
@@ -287,10 +310,57 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         1.0,
                       ),
                     ),
-                    child: _buildAttendanceItem(record, theme, colorScheme),
+                    child: Dismissible(
+                      key: Key(record.tanggal),
+                      direction: DismissDirection.horizontal,
+                      confirmDismiss: (direction) async {
+                        if (direction == DismissDirection.endToStart) {
+                          // Swipe left -> Show detail
+                          _showKeteranganDialog(context, record, theme);
+                        } else {
+                          // Swipe right -> Show quick info
+                          _showQuickInfo(context, record, colorScheme);
+                        }
+                        return false; // Don't dismiss the item
+                      },
+                      background: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.only(left: 20),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline_rounded, color: colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Text('Info', style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                      secondaryBackground: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: colorScheme.tertiaryContainer,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Text('Detail', style: TextStyle(color: colorScheme.tertiary, fontWeight: FontWeight.w600)),
+                            const SizedBox(width: 8),
+                            Icon(Icons.chevron_right_rounded, color: colorScheme.tertiary),
+                          ],
+                        ),
+                      ),
+                      child: _buildAttendanceItem(record, theme, colorScheme),
+                    ),
                   );
                 },
-                childCount: selectedEmployee.data.length,
+                childCount: _getFilteredData(selectedEmployee.data).length,
               ),
             ),
 
@@ -1313,6 +1383,66 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
   }
 
+  void _showQuickInfo(BuildContext context, AttendanceRecord record, ColorScheme colorScheme) {
+    final isPresent = record.isWorkingDay;
+    final isLate = record.isLate;
+    final isHoliday = record.isLeaveOrHoliday;
+    
+    String status;
+    IconData icon;
+    Color color;
+    
+    if (isHoliday) {
+      status = record.keterangan.isNotEmpty ? record.keterangan : 'Libur';
+      icon = Icons.event_busy_rounded;
+      color = Colors.grey;
+    } else if (isLate) {
+      status = 'Terlambat';
+      icon = Icons.access_time_rounded;
+      color = const Color(0xFFF59E0B);
+    } else if (isPresent) {
+      status = 'Hadir';
+      icon = Icons.check_circle_rounded;
+      color = const Color(0xFF10B981);
+    } else {
+      status = 'Tidak Hadir';
+      icon = Icons.cancel_rounded;
+      color = const Color(0xFFEF4444);
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    record.tanggal,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '$status${record.balance != null ? " • Balance: ${record.balance}" : ""}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   String _formatMonth(String yyyyMM) {
     if (yyyyMM.length < 7) return yyyyMM;
     final year = yyyyMM.substring(0, 4);
@@ -1320,5 +1450,53 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     const months = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
                     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
     return '${months[month]} $year';
+  }
+
+  Widget _buildFilterChip(String value, String label, IconData icon, ColorScheme colorScheme) {
+    final isSelected = _selectedFilter == value;
+    return FilterChip(
+      selected: isSelected,
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 16,
+            color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface.withOpacity(0.7),
+          ),
+          const SizedBox(width: 6),
+          Text(label),
+        ],
+      ),
+      labelStyle: TextStyle(
+        color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
+        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+      ),
+      backgroundColor: colorScheme.surfaceContainerHighest,
+      selectedColor: colorScheme.primary,
+      checkmarkColor: colorScheme.onPrimary,
+      showCheckmark: false,
+      onSelected: (selected) {
+        setState(() {
+          _selectedFilter = value;
+        });
+      },
+    );
+  }
+
+  List<AttendanceRecord> _getFilteredData(List<AttendanceRecord> data) {
+    final sortedData = List<AttendanceRecord>.from(data)
+      ..sort((a, b) => b.tanggal.compareTo(a.tanggal));
+    
+    if (_selectedFilter == 'all') {
+      return sortedData;
+    } else if (_selectedFilter == 'hadir') {
+      return sortedData.where((r) => r.isWorkingDay && !r.isLate).toList();
+    } else if (_selectedFilter == 'terlambat') {
+      return sortedData.where((r) => r.isLate).toList();
+    } else if (_selectedFilter == 'libur') {
+      return sortedData.where((r) => r.isLeaveOrHoliday).toList();
+    }
+    return sortedData;
   }
 }

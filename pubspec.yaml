@@ -42,6 +42,10 @@ dependencies:
   
   # Google Fonts for premium typography
   google_fonts: ^6.1.0
+  
+  # PDF/Excel Export
+  pdf: ^3.10.0
+  printing: ^5.11.0
 
 dev_dependencies:
   flutter_test:
