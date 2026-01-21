@@ -145,6 +145,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         ? state.filteredEmployees.first 
         : null;
 
+    // Calculate expanded height based on screen size
+    final expandedHeight = isSmallScreen ? 200.0 : 170.0;
+
     return RefreshIndicator(
       onRefresh: () => ref.read(dashboardProvider.notifier).refreshData(),
       color: colorScheme.primary,
@@ -154,19 +157,36 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
-          // Animated Header
-          SliverToBoxAdapter(
-            child: FadeTransition(
+          // Pinned Header - stays visible during scroll
+          SliverAppBar(
+            pinned: true,
+            floating: true,
+            snap: true,
+            expandedHeight: expandedHeight,
+            collapsedHeight: 70,
+            toolbarHeight: 70,
+            elevation: 0,
+            scrolledUnderElevation: 2,
+            backgroundColor: colorScheme.surface,
+            surfaceTintColor: colorScheme.surfaceTint,
+            title: FadeTransition(
               opacity: _animationController,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, -0.2),
-                  end: Offset.zero,
-                ).animate(CurvedAnimation(
-                  parent: _animationController,
-                  curve: Curves.easeOutCubic,
-                )),
-                child: _buildHeader(theme, colorScheme, state, isSmallScreen),
+              child: _buildAppTitle(theme, colorScheme),
+            ),
+            flexibleSpace: FlexibleSpaceBar(
+              collapseMode: CollapseMode.pin,
+              background: FadeTransition(
+                opacity: _animationController,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, -0.2),
+                    end: Offset.zero,
+                  ).animate(CurvedAnimation(
+                    parent: _animationController,
+                    curve: Curves.easeOutCubic,
+                  )),
+                  child: _buildHeaderContent(theme, colorScheme, state, isSmallScreen),
+                ),
               ),
             ),
           ),
@@ -302,68 +322,75 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
   }
 
-  Widget _buildHeader(ThemeData theme, ColorScheme colorScheme, DashboardState state, bool isSmallScreen) {
-    return Container(
-      padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // App Title Row
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [colorScheme.primary, colorScheme.tertiary],
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: colorScheme.primary.withOpacity(0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.calendar_month_rounded,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Attendance',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    Text(
-                      AppConfig.companyName,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurface.withOpacity(0.6),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
+  /// Builds the pinned app title (visible when collapsed)
+  Widget _buildAppTitle(ThemeData theme, ColorScheme colorScheme) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [colorScheme.primary, colorScheme.tertiary],
+            ),
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [
+              BoxShadow(
+                color: colorScheme.primary.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          
-          // Filter selectors
+          child: const Icon(
+            Icons.calendar_month_rounded,
+            color: Colors.white,
+            size: 20,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Attendance',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                letterSpacing: -0.3,
+              ),
+            ),
+            Text(
+              AppConfig.companyName,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurface.withOpacity(0.6),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Builds the header content for flexible space (only selectors, title is in SliverAppBar)
+  Widget _buildHeaderContent(ThemeData theme, ColorScheme colorScheme, DashboardState state, bool isSmallScreen) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        isSmallScreen ? 16 : 20,
+        isSmallScreen ? 100 : 90, // Space below the pinned title
+        isSmallScreen ? 16 : 20,
+        16,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Filter selectors only (no duplicate title)
           if (isSmallScreen)
             Column(
               children: [
                 _buildEmployeeSelector(theme, colorScheme, state),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 _buildMonthSelector(theme, colorScheme, state),
               ],
             )
@@ -378,6 +405,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         ],
       ),
     );
+  }
+
+  // Legacy method kept for compatibility - redirects to new implementation  
+  Widget _buildHeader(ThemeData theme, ColorScheme colorScheme, DashboardState state, bool isSmallScreen) {
+    return _buildHeaderContent(theme, colorScheme, state, isSmallScreen);
   }
 
   Widget _buildEmployeeSelector(ThemeData theme, ColorScheme colorScheme, DashboardState state) {
